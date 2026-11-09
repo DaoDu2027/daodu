@@ -18,7 +18,7 @@
     font-size:14px; line-height:1.6;
   }
   /* ================= 一屏应用外壳 ================= */
-  #app{height:100vh; min-width:1020px; display:flex; flex-direction:column;}
+  #app{height:100vh; height:100dvh; min-width:1020px; display:flex; flex-direction:column;}
   #topbar{
     flex:none; display:flex; align-items:center; gap:12px;
     padding:8px 16px; background:var(--panel); border-bottom:1px solid var(--line);
@@ -275,6 +275,55 @@
   #loading{
     position:fixed; inset:0; background:var(--bg); z-index:100;
     display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:14px;
+  }
+  /* ============ 移动端适配（全部条件生效，PC 端样式零改动） ============ */
+  button{touch-action:manipulation;}   /* 去掉触屏点按 300ms 延迟与双击缩放 */
+  /* --- 竖屏 / 窄屏：上下结构（图谱在上，信息面板在下） --- */
+  @media (max-width: 860px){
+    body{overflow:hidden; font-size:14.5px;}
+    #app{min-width:0;}
+    #topbar{flex-wrap:wrap; padding:6px 10px; gap:6px 8px;}
+    #topbar .brand{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:14px;}
+    #topbar .brand .sub{display:none;}
+    #topbar .tag{display:none;}
+    #infoBtn{width:34px; height:34px; font-size:15px;}
+    #chapterBar{order:5; width:100%; margin-left:0;}
+    .chLabel{padding:5px 8px; letter-spacing:2px; font-size:12px;}
+    .navBtn{width:34px; height:34px; font-size:18px;}
+    #chapters{max-width:none; flex:1;}
+    .chBtn{min-width:40px; height:38px; padding:0 14px; font-size:16px;}
+    .chBtn .chT{font-size:12.5px;}
+    main{flex-direction:column; padding:8px; gap:8px;}
+    #graphWrap{flex:1 1 55%; min-height:0; border-radius:12px;}
+    #side{flex:1 1 45%; width:auto; min-height:0; border-radius:12px;}
+    .sideTabs button{padding:12px; font-size:14.5px;}
+    .tabPane{padding:10px 12px;}
+    #bottombar{padding:5px 10px; font-size:12px;}
+    #legend{left:8px; bottom:8px; font-size:10px; padding:4px 9px; line-height:1.7;}
+    #graphToolbar button{min-width:36px; height:34px; font-size:15px;}
+    #popover{max-width:calc(100vw - 20px);}
+    .overlay .box{padding:16px 18px; width:92%;}
+  }
+  /* --- 手机横屏（矮屏）：恢复左右结构，图谱为主 + 窄侧栏，转屏自动切换 --- */
+  @media (orientation: landscape) and (max-height: 560px){
+    body{overflow:hidden;}
+    #app{min-width:0;}
+    #topbar{flex-wrap:nowrap; padding:4px 10px; gap:6px;}
+    #topbar .brand{font-size:13px; flex:none; min-width:0; max-width:24vw; overflow:hidden; text-overflow:ellipsis;}
+    #topbar .brand .sub{display:none;}
+    #topbar .tag{display:none;}
+    #infoBtn{width:30px; height:30px;}
+    #chapterBar{order:0; width:auto; margin-left:auto; flex:1; min-width:0;}
+    .navBtn{width:30px; height:30px; font-size:16px;}
+    .chBtn{min-width:34px; height:32px; padding:0 10px; font-size:14px;}
+    .chBtn .chT{font-size:11px;}
+    main{flex-direction:row; padding:6px 8px; gap:8px;}
+    #graphWrap{flex:1; min-height:0; border-radius:12px;}
+    #side{flex:none; width:290px; border-radius:12px;}
+    .sideTabs button{padding:9px; font-size:13px;}
+    .tabPane{padding:8px 10px;}
+    #bottombar{padding:4px 10px; font-size:11.5px;}
+    #legend{font-size:10px; padding:4px 8px;}
   }
 </style>
 <script>
@@ -776,6 +825,47 @@ svg.addEventListener("wheel", ev => {
   zoomAt(k, px, py);
 }, {passive:false});
 
+/* ---------- 触屏：双指捏合缩放 ---------- */
+const ptrs = new Map();
+let pinchBase = null;
+svg.addEventListener("pointerdown", ev => {
+  if(ev.target.closest(".node") || ev.target.closest(".edge")) return;
+  ptrs.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+  if(ptrs.size === 2){
+    const [a, b] = [...ptrs.values()];
+    pinchBase = {d: Math.hypot(a.x - b.x, a.y - b.y) || 1, view: {...view}};
+    panning = false;                       /* 第二指落下：停止单指平移，进入捏合 */
+    svg.classList.remove("panning");
+  }
+});
+window.addEventListener("pointermove", ev => {
+  if(!pinchBase || !ptrs.has(ev.pointerId)) return;
+  ptrs.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+  if(ptrs.size === 2){
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    const r = svg.getBoundingClientRect();
+    const mx = ((a.x + b.x) / 2 - r.left) / r.width;
+    const my = ((a.y + b.y) / 2 - r.top) / r.height;
+    const k = Math.min(Math.max(pinchBase.d / d, 0.3), 3.2);
+    const nw = Math.min(Math.max(pinchBase.view.w * k, WORLD.w * 0.06), WORLD.w * 2.0);
+    const kk = nw / pinchBase.view.w;
+    view = {
+      x: pinchBase.view.x + mx * pinchBase.view.w * (1 - kk),
+      y: pinchBase.view.y + my * pinchBase.view.h * (1 - kk),
+      w: nw, h: pinchBase.view.h * kk
+    };
+    userAdjusted = true;
+    applyView();
+  }
+}, {passive:true});
+function pinchEnd(ev){
+  ptrs.delete(ev.pointerId);
+  if(ptrs.size < 2) pinchBase = null;      /* 从两指回到一指/零指：结束捏合 */
+}
+window.addEventListener("pointerup", pinchEnd);
+window.addEventListener("pointercancel", pinchEnd);
+
 document.getElementById("zoomInBtn").onclick = () => zoomAt(0.78, 0.5, 0.5);
 document.getElementById("zoomOutBtn").onclick = () => zoomAt(1.28, 0.5, 0.5);
 document.getElementById("fitBtn").onclick = () => { userAdjusted = false; fitContent(); };
@@ -797,6 +887,7 @@ document.getElementById("tabBtnChars").onclick = () => switchTab("chars");
 /* ================= 人物 Tab ================= */
 function selectChar(id){
   selectedChar = id;
+  clearFocus();   /* 触屏没有 pointerleave，点选时手动清掉悬停聚焦态 */
   document.querySelectorAll("#gNodes .node").forEach(g => g.classList.toggle("selected", g.dataset.id === id));
   switchTab("chars");
   renderCharCard();
@@ -1053,6 +1144,11 @@ function showFatal(title, text){
 
 function initUI(){
   document.getElementById("loading").style.display = "none";
+  /* 触屏设备：图例操作提示换成触屏手势 */
+  if(("ontouchstart" in window) || navigator.maxTouchPoints > 0){
+    const lg = document.querySelector("#legend div:last-child");
+    if(lg) lg.textContent = "双指缩放 · 拖动平移 · 双击复位 · 点人物看档案";
+  }
   applyView();
   window.addEventListener("resize", () => { if(!userAdjusted) fitContent(); });
   renderChapterBar();
