@@ -106,6 +106,29 @@
   #emptyHint .big{font-size:16px; font-weight:700; margin-bottom:8px;}
   #emptyHint p{font-size:13px; color:var(--muted); max-width:460px; line-height:1.8;}
   #legend .sw{display:inline-block; width:12px; height:3px; border-radius:2px; vertical-align:middle; margin-right:4px;}
+  /* ---------- 搜索定位（只搜当前章节已出场的人物） ---------- */
+  #searchBox{position:absolute; top:10px; left:12px; z-index:6; width:216px;}
+  #searchBox .icon{
+    position:absolute; left:9px; top:6px; font-size:12px; color:var(--muted); pointer-events:none; line-height:16px;
+  }
+  #searchInput{
+    width:100%; height:28px; border:1px solid var(--line); border-radius:8px;
+    background:rgba(255,255,255,.95); padding:0 10px 0 28px; font-size:13px; color:var(--ink); outline:none;
+    font-family:inherit;
+  }
+  #searchInput::placeholder{color:#a6abb5;}
+  #searchInput:focus{border-color:var(--accent);}
+  #searchDrop{
+    position:absolute; top:33px; left:0; right:0; background:#fff; border:1px solid var(--line);
+    border-radius:10px; box-shadow:0 6px 20px rgba(30,35,50,.15); overflow:hidden; display:none; z-index:7;
+  }
+  #searchDrop .item{display:flex; align-items:center; gap:7px; padding:7px 10px; cursor:pointer; font-size:13px;}
+  #searchDrop .item.on, #searchDrop .item:hover{background:#f2f6ff;}
+  #searchDrop .item .dot{width:9px; height:9px; border-radius:50%; flex:none;}
+  #searchDrop .item .dot.ghost{background:#eef0f3; border:1.5px dashed #b6bcc6;}
+  #searchDrop .item .meta{margin-left:auto; font-size:11px; color:var(--muted); white-space:nowrap; padding-left:10px;}
+  #searchDrop .none{padding:9px 12px; font-size:12px; color:var(--muted); line-height:1.5;}
+  .node.ping circle.halo{stroke:var(--accent); animation:halo .9s ease-out 4;}
   /* ---------- 边与节点 ---------- */
   .edge{cursor:pointer; transition:opacity .18s;}
   .edge path.hit{stroke:transparent; stroke-width:18; fill:none;}
@@ -309,6 +332,8 @@
     #bottombar{padding:5px 10px; font-size:12px;}
     #legend{left:8px; bottom:8px; font-size:10px; padding:4px 9px; line-height:1.7;}
     #graphToolbar button{min-width:36px; height:34px; font-size:15px;}
+    #searchBox{width:150px;}
+    #searchInput{height:32px; font-size:16px;}   /* 16px 避免 iOS 聚焦自动放大页面 */
     #popover{max-width:calc(100vw - 20px);}
     .overlay .box{padding:16px 18px; width:92%;}
   }
@@ -358,6 +383,11 @@ window.BOOK_EXPORT_INFO = { readChapters: 361, totalChapters: 361 };
 
   <main>
     <section id="graphWrap">
+      <div id="searchBox">
+        <span class="icon">🔍</span>
+        <input id="searchInput" placeholder="搜已出场的人物" autocomplete="off" spellcheck="false">
+        <div id="searchDrop"></div>
+      </div>
       <div id="graphToolbar">
         <button id="zoomInBtn" title="放大">＋</button>
         <button id="zoomOutBtn" title="缩小">−</button>
@@ -957,6 +987,76 @@ function renderCharList(){
     </div>`).join("");
 }
 
+/* ================= 搜索定位（防剧透：只搜当前章节已出场的人物） ================= */
+const searchInput = document.getElementById("searchInput");
+const searchDrop = document.getElementById("searchDrop");
+let searchIdx = -1;
+
+const norm = s => (s || "").toLowerCase().replace(/\s+/g, "");
+function searchCandidates(q){
+  q = norm(q);
+  if(!q) return [];
+  const N = state.chapter;
+  return activeChars(N)
+    .map(c => {
+      const names = [c.short, c.name].concat((c.aliases || []).filter(a => a.from <= N).map(a => a.name));
+      const score = names.some(s => norm(s).startsWith(q)) ? 0
+                  : names.some(s => norm(s).includes(q)) ? 1 : -1;
+      return {c, score};
+    })
+    .filter(x => x.score >= 0)
+    .sort((a, b) => a.score - b.score || b.c.count - a.c.count)
+    .slice(0, 8);
+}
+function renderSearchDrop(){
+  searchIdx = -1;
+  const q = searchInput.value.trim();
+  if(!q){ searchDrop.style.display = "none"; searchDrop.innerHTML = ""; return; }
+  const list = searchCandidates(q);
+  searchDrop.innerHTML = list.length
+    ? list.map(x => `<div class="item" data-id="${x.c.id}"><span class="dot ${x.c.ghost ? "ghost" : ""}" style="background:${x.c.ghost ? "" : nodeColor(x.c)}"></span>${esc(x.c.short)}<span class="meta">${x.c.ghost ? "仅被提及" : "第" + x.c.first + "章登场"}</span></div>`).join("")
+    : `<div class="none">没有匹配 —— 未出场的人物搜不到（防剧透）</div>`;
+  searchDrop.style.display = "block";
+}
+function focusOnChar(id){
+  const n = sim.nodes.find(n => n.id === id);
+  selectChar(id);
+  searchDrop.style.display = "none";
+  if(!n) return;
+  view.x = n.x - view.w / 2;           /* 平移视图使该人物居中（保持当前缩放） */
+  view.y = n.y - view.h / 2;
+  userAdjusted = true;
+  applyView();
+  const g = document.querySelector(`#gNodes .node[data-id="${id}"]`);
+  if(g){
+    g.classList.remove("ping");
+    requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add("ping")));
+    setTimeout(() => g.classList.remove("ping"), 4000);
+  }
+}
+searchInput.addEventListener("input", renderSearchDrop);
+searchInput.addEventListener("focus", renderSearchDrop);
+searchInput.addEventListener("keydown", ev => {
+  const items = [...searchDrop.querySelectorAll(".item")];
+  if(ev.key === "Escape"){ searchInput.value = ""; renderSearchDrop(); searchInput.blur(); return; }
+  if(!items.length) return;
+  if(ev.key === "ArrowDown" || ev.key === "ArrowUp"){
+    ev.preventDefault();
+    searchIdx = ev.key === "ArrowDown" ? (searchIdx + 1) % items.length : (searchIdx - 1 + items.length) % items.length;
+    items.forEach((it, i) => it.classList.toggle("on", i === searchIdx));
+  } else if(ev.key === "Enter"){
+    focusOnChar(items[Math.max(searchIdx, 0)].dataset.id);
+    searchInput.blur();
+  }
+});
+searchInput.addEventListener("blur", () => setTimeout(() => { searchDrop.style.display = "none"; }, 150));
+searchDrop.addEventListener("pointerdown", ev => {
+  const item = ev.target.closest(".item");
+  if(!item) return;
+  ev.preventDefault();                  /* 阻止输入框先失焦导致下拉消失 */
+  focusOnChar(item.dataset.id);
+});
+
 /* ================= 本章小结 Tab ================= */
 function renderStatsBox(){
   const N = state.chapter;
@@ -1057,6 +1157,10 @@ function renderChapterBar(){
 function applyChapter(t){
   const old = state.chapter;
   state.chapter = t;
+  if(typeof searchInput !== "undefined" && searchInput.value){
+    searchInput.value = "";            /* 出场范围变了，清空旧搜索防剧透 */
+    searchDrop.style.display = "none";
+  }
   renderChapterBar();
   renderChapterInfo();
   renderChSummaryBox(); renderStatsBox(); renderSummary(old, t);
