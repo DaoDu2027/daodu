@@ -136,6 +136,14 @@
   .node circle.halo{fill:none; stroke:var(--good); stroke-width:2.4; opacity:0; transform-box:fill-box; transform-origin:center;}
   .node.new circle.halo{animation:halo 1.4s ease-out 3;}
   @keyframes halo{0%{transform:scale(.6); opacity:.85;} 100%{transform:scale(1.9); opacity:0;}}
+  /* 本章出现的人物：实线深灰外环（颜色留给人物专属色，这里用"描边环"区分） */
+  .node circle.spot{fill:none; stroke:#39414d; stroke-width:2.2; opacity:0;}
+  .node.here circle.spot{opacity:.9;}
+  .node.here text.nodeLabel{font-weight:800;}
+  #charList .hereTag{
+    font-size:10px; color:#39414d; border:1.5px solid #39414d; border-radius:4px;
+    padding:0 4px; margin-left:6px; line-height:15px; font-weight:700; vertical-align:1px;
+  }
   /* ---------- 侧栏（Tab） ---------- */
   #side{
     flex:none; width:356px; display:flex; flex-direction:column;
@@ -361,6 +369,7 @@ window.BOOK_EXPORT_INFO = { readChapters: 361, totalChapters: 361 };
       </svg>
       <div id="legend">
         <div><span class="sw" style="background:var(--love)"></span>情感 <span class="sw" style="background:var(--family)"></span>亲缘 <span class="sw" style="background:var(--friend)"></span>朋友 <span class="sw" style="background:var(--other)"></span>其他 ｜ 实线进行中 · 虚线已结束 · 灰点仅被提及</div>
+        <div>◎ 实线外环 = 本章出现的人物</div>
         <div>滚轮缩放 · 拖空白平移 · 双击复位 · 悬停人物高亮</div>
       </div>
       <div id="emptyHint" style="display:none">
@@ -499,6 +508,21 @@ const activeChars = N => CHARACTERS.filter(c => c.first <= N);
 const knownRels = N => RELATIONS.map((r,i) => ({...r, _i:i})).filter(r => r.from <= N);
 const relState = (r, N) => (r.to == null || r.to > N) ? "active" : "ended";
 const bothEndsActive = (r, N) => charById[r.a] && charById[r.b] && charById[r.a].first <= N && charById[r.b].first <= N;
+/* ---------- 本章出现的人物（实线外环标识） ----------
+   数据没有逐章出场表，按章节戳推断"本章出现"：
+   ① 本章首次登场/被提及 ② 本章有身份更新 ③ 本章新获称呼 ④ 本章有关系建立/结束/依据活动 */
+function chapterCast(N){
+  const set = new Set();
+  CHARACTERS.forEach(c => {
+    if(c.first === N
+      || (c.notes || []).some(n => n.chapter === N)
+      || (c.aliases || []).some(a => a.from === N)) set.add(c.id);
+  });
+  RELATIONS.forEach(r => {
+    if(r.from === N || r.to === N || (r.ev || []).some(e => e.c === N)){ set.add(r.a); set.add(r.b); }
+  });
+  return set;
+}
 
 /* ---------- 人名色块工具 ---------- */
 function mixHex(h1, h2, t){
@@ -646,16 +670,18 @@ function renderGraph(nodes, links, newNodes, newEdges){
     l.el = {g, hit, vis, txt};
     hit.addEventListener("pointerdown", ev => { ev.stopPropagation(); openEdgePopover(l.r, ev); });
   }
+  const cast = chapterCast(state.chapter);
   for(const n of nodes){
     const c = charById[n.id];
-    const cls = "node" + (c.ghost ? " ghost" : "") + (newNodes.has(n.id) ? " new" : "") + (selectedChar === n.id ? " selected" : "");
+    const cls = "node" + (c.ghost ? " ghost" : "") + (newNodes.has(n.id) ? " new" : "") + (selectedChar === n.id ? " selected" : "") + (cast.has(n.id) ? " here" : "");
     const g = mk("g", cls);
     g.dataset.id = n.id;
     const halo = mk("circle", "halo");  halo.setAttribute("r", c.r + 11);
+    const spot = mk("circle", "spot");  spot.setAttribute("r", c.r + 8);
     const ring = mk("circle", "ring");  ring.setAttribute("r", c.r + 5);
     const body = mk("circle", "body");  body.setAttribute("r", c.r); body.setAttribute("fill", nodeColor(c));
     const label = mk("text", "nodeLabel"); label.textContent = c.short; label.setAttribute("y", c.r + 22);
-    g.append(halo, ring, body, label);
+    g.append(halo, spot, ring, body, label);
     gNodes.append(g);
     n.el = g;
     g.addEventListener("pointerdown", ev => startDrag(ev, n));
@@ -921,11 +947,12 @@ function renderCharCard(){
 }
 function renderCharList(){
   const N = state.chapter;
+  const cast = chapterCast(N);
   const chars = activeChars(N).slice().sort((a,b) => a.first - b.first || b.count - a.count);
   document.getElementById("charList").innerHTML = chars.map(c => `
     <div class="row ${selectedChar === c.id ? "sel" : ""}" onclick="selectChar('${c.id}')">
       <span class="dot ${c.ghost ? "ghost" : ""}" style="background:${c.ghost ? "" : nodeColor(c)}"></span>
-      <span class="nm">${esc(c.short)}</span>
+      <span class="nm">${esc(c.short)}${cast.has(c.id) ? '<span class="hereTag">本章</span>' : ""}</span>
       <span class="meta">${c.ghost ? "仅被提及" : "第" + c.first + "章登场"}</span>
     </div>`).join("");
 }
