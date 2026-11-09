@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>名著导读 · 防剧透人物图谱</title>
+<style>
+  :root{
+    --bg:#f6f4ef; --card:#ffffff; --ink:#2b2620; --muted:#8a8073;
+    --line:#e6e0d6; --accent:#8b5e3c;
+  }
+  *{margin:0; padding:0; box-sizing:border-box;}
+  body{
+    font-family:"Songti SC","STSong","SimSun",Georgia,serif;
+    background:var(--bg); color:var(--ink); min-height:100vh;
+    display:flex; flex-direction:column; align-items:center;
+    padding:48px 20px;
+  }
+  .brand{font-size:34px; letter-spacing:6px; font-weight:700;}
+  .sub{color:var(--muted); margin-top:12px; font-size:14px; letter-spacing:1px;}
+  .cards{margin-top:44px; width:100%; max-width:560px; display:flex; flex-direction:column; gap:14px;}
+  a.card{
+    display:block; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; padding:20px 24px; text-decoration:none; color:var(--ink);
+    transition:box-shadow .2s, transform .2s;
+  }
+  a.card:hover{box-shadow:0 6px 18px rgba(60,45,30,.10); transform:translateY(-2px);}
+  .card .t{font-size:20px; font-weight:700; letter-spacing:2px;}
+  .card .s{color:var(--muted); font-size:13px; margin-top:6px; letter-spacing:.5px;}
+  .card .go{color:var(--accent); font-size:13px; margin-top:10px; letter-spacing:1px;}
+  .foot{margin-top:auto; padding-top:60px; color:var(--muted); font-size:12px; letter-spacing:1px;}
+</style>
+</head>
+<body>
+  <div class="brand">名著导读</div>
+  <div class="sub">AI 逐章阅读 · 人物关系图谱 · 读到哪章看哪章，绝不剧透</div>
+  <div class="cards">
+    <!-- 新书插这里 -->
+    <a class="card" href="zhanzheng-yu-heping.html">
+      <div class="t">战争与和平</div>
+      <div class="s">列夫·托尔斯泰 · 全四卷 361 章 · 432 个人物 · 826 条关系</div>
+      <div class="go">进入阅读 →</div>
+    </a>
+  </div>
+  <div class="foot">每本导读均由 AI 逐章阅读原文生成，每条结论附原文引句</div>
+</body>
+</html>
