@@ -161,9 +161,9 @@
   .node .halo{fill:none; stroke:var(--good); stroke-width:2.4; opacity:0; transform-box:fill-box; transform-origin:center;}
   .node.new circle.halo{animation:halo 1.4s ease-out 3;}
   @keyframes halo{0%{transform:scale(.6); opacity:.85;} 100%{transform:scale(1.9); opacity:0;}}
-  /* 本章出现的人物：实线深灰外环（颜色留给人物专属色，这里用"描边环"区分） */
-  .node .spot{fill:none; stroke:#39414d; stroke-width:2.2; opacity:0;}
-  .node.here .spot{opacity:.9;}
+  /* 本章出现的人物：右上角小圆点（App 未读消息式角标；颜色留给人物专属色） */
+  .node .spot{fill:#39414d; stroke:#fdfdfe; stroke-width:2; opacity:0; transition:opacity .2s;}
+  .node.here .spot{opacity:1;}
   .node.here text.nodeLabel{font-weight:800;}
   #charList .hereTag{
     font-size:10px; color:#39414d; border:1.5px solid #39414d; border-radius:4px;
@@ -402,7 +402,7 @@ window.BOOK_EXPORT_INFO = { readChapters: 361, totalChapters: 361 };
       </svg>
       <div id="legend">
         <div><span class="sw" style="background:var(--love)"></span>情感 <span class="sw" style="background:var(--family)"></span>亲缘 <span class="sw" style="background:var(--friend)"></span>朋友 <span class="sw" style="background:var(--other)"></span>其他 ｜ 实线进行中 · 虚线已结束 · 灰点仅被提及</div>
-        <div>◎ 实线外环 = 本章在原文出现（按称呼逐字实证）· 标签为全书最常用称呼</div>
+        <div><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#39414d;border:1.5px solid #fdfdfe;box-shadow:0 0 0 1px #e6e8ee;vertical-align:0;margin-right:4px;"></span>右上角圆点 = 本章在原文出现（按称呼逐字实证）· 标签为全书最常用称呼</div>
         <div>滚轮缩放 · 拖空白平移 · 双击复位 · 悬停人物高亮</div>
       </div>
       <div id="emptyHint" style="display:none">
@@ -562,7 +562,7 @@ function callName(c, N){
   return c.short;
 }
 
-/* ---------- 本章出现的人物（实线外环标识） ----------
+/* ---------- 本章出现的人物（右上角圆点角标） ----------
    首选原文实证（mentions 矩阵命中）；无矩阵数据时退回章节戳推断：
    ① 本章首次登场/被提及 ② 本章有身份更新 ③ 本章新获称呼 ④ 本章有关系建立/结束/依据活动 */
 function chapterCast(N){
@@ -675,7 +675,6 @@ function nodeColor(c){ return c.color; }
 /* 被家庭合并掉的关系：edge _i -> 连线承载方（配偶）charId；卡片注记用 */
 let mergeInfo = {};
 function rebuild(oldN){  const N = state.chapter;
-  sim._dbg = [];
   const prevPos = {};
   sim.nodes.forEach(n => prevPos[n.id] = n);
   const chars = activeChars(N);
@@ -854,12 +853,6 @@ function rebuild(oldN){  const N = state.chapter;
       grp.forEach(id => py[id] = d);
     };
     const roots = members.map(m => m.id).filter(id => !parentsOf[id]);
-    sim._dbg = sim._dbg || [];
-    sim._dbg.push({roots: roots.map(id => charById[id].name),
-      parents: Object.keys(parentsOf).map(id => charById[id].name + "<-" + parentsOf[id].map(p => charById[p].name).join(",")),
-      children: Object.keys(childrenOf).map(id => charById[id].name + "->" + childrenOf[id].map(p => charById[p].name).join(",")),
-      partnerMap: Object.entries(partner).map(([a,b]) => charById[a].name + "=" + charById[b].name),
-      depth: Object.fromEntries(members.map(m => [charById[m.id].name, depth[m.id]]))});
     const done = new Set();
     for(const r0 of roots){
       if(done.has(r0)) continue;
@@ -886,7 +879,6 @@ function rebuild(oldN){  const N = state.chapter;
     members.forEach(m => {
       m.rect = true;
       m.w = R[m.id].w; m.h = R[m.id].h;
-      m._py = py[m.id];
       m.ox = px[m.id] - (bbMinX + bbMaxX) / 2;
       m.oy = py[m.id] * ROWH - (bbMinY + bbMaxY) / 2;
       m.unitRef = unit;
@@ -930,6 +922,25 @@ function rebuild(oldN){  const N = state.chapter;
   }
   sim.stripW = stripW;
 
+  /* 新登场散人（无历史位置且不在家族块）：在右侧散人区按网格均匀铺开，
+     起步即分散，避免中心扎堆与大量交叉线 */
+  const freshFree = nodes.filter(n => !n.unitRef && !prevPos[n.id]);
+  if(freshFree.length){
+    const left = stripW + 60;
+    const freeW = Math.max(WORLD.w - left - 40, 200);
+    const availH = WORLD.h - 120;
+    const s = Math.max(74, Math.min(150, Math.sqrt(freeW * availH / freshFree.length)));
+    const perRow = Math.max(1, Math.floor(freeW / s));
+    const rows = Math.ceil(freshFree.length / perRow);
+    const cx0 = left + freeW / 2, cy0 = WORLD.h / 2;
+    freshFree.forEach((n, i) => {
+      const row = Math.floor(i / perRow), col = i % perRow;
+      n.x = cx0 + (col - (perRow - 1) / 2) * s;
+      n.y = cy0 + (row - (rows - 1) / 2) * s;
+      n.vx = 0; n.vy = 0;
+    });
+  }
+
   /* 单条边也给自然弧度（方向随端点序稳定），避免全图直线交叉感；
      spouse/tree 是刚体内部走线不吃弧度，kin（兄妹/祖孙等族内边）随普通边给弧度 */
   visLinks.forEach(l => {
@@ -952,16 +963,16 @@ function rebuild(oldN){  const N = state.chapter;
 
 function renderGraph(nodes, links, newNodes, newEdges){
   gEdges.innerHTML = ""; gNodes.innerHTML = "";
-  /* 家族底板：每个单元一块圆角面板，组织架构图式呈现 */
+  /* 家族底板：每个单元一块圆角面板，组织架构图式呈现（用 transform 定位，拖动整族时随 draw() 跟动） */
   gUnits.innerHTML = "";
   for(const u of (sim.units || [])){
-    const box = mk("rect", "unitBox");
     const pad = 26;
-    box.setAttribute("x", u.ax - u.bw / 2 - pad);
-    box.setAttribute("y", u.ay - u.bh / 2 - pad);
+    const box = mk("rect", "unitBox");
+    box.setAttribute("x", 0); box.setAttribute("y", 0);
     box.setAttribute("width", u.bw + pad * 2);
     box.setAttribute("height", u.bh + pad * 2);
     box.setAttribute("rx", 18);
+    u.boxEl = box;
     gUnits.append(box);
   }
   const groups = {};
@@ -995,26 +1006,28 @@ function renderGraph(nodes, links, newNodes, newEdges){
     g.dataset.id = n.id;
     const isR = !!n.rect;
     const halo = mk(isR ? "rect" : "circle", "halo");
-    const spot = mk(isR ? "rect" : "circle", "spot");
     const ring = mk(isR ? "rect" : "circle", "ring");
     const body = mk(isR ? "rect" : "circle", "body");
+    const spot = mk("circle", "spot");          /* 本章出现角标：右上角小圆点 */
     if(isR){
       const setR = (el, pad, rx) => {
         el.setAttribute("x", -n.w/2 - pad); el.setAttribute("y", -n.h/2 - pad * 0.8);
         el.setAttribute("width", n.w + pad * 2); el.setAttribute("height", n.h + pad * 1.6);
         el.setAttribute("rx", rx);
       };
-      setR(halo, 11, 16); setR(spot, 7, 13); setR(ring, 10, 15); setR(body, 0, 12);
+      setR(halo, 11, 16); setR(ring, 10, 15); setR(body, 0, 12);
     } else {
       halo.setAttribute("r", c.r + 11);
-      spot.setAttribute("r", c.r + 8);
       ring.setAttribute("r", c.r + 5);
       body.setAttribute("r", c.r);
     }
+    spot.setAttribute("r", 7.5);
+    spot.setAttribute("cx", isR ? n.w / 2 - 1 : c.r * 0.72);
+    spot.setAttribute("cy", isR ? -n.h / 2 + 1 : -c.r * 0.72);
     body.setAttribute("fill", nodeColor(c));
     const label = mk("text", "nodeLabel"); label.textContent = callName(c, state.chapter);
     label.setAttribute("y", (isR ? n.h / 2 : c.r) + 22);
-    g.append(halo, spot, ring, body, label);
+    g.append(halo, ring, body, spot, label);
     gNodes.append(g);
     n.el = g;
     g.addEventListener("pointerdown", ev => startDrag(ev, n));
@@ -1100,6 +1113,9 @@ function physics(){
 function draw(){
   for(const n of sim.nodes){
     n.el.setAttribute("transform", `translate(${n.x},${n.y})`);
+  }
+  for(const u of sim.units){                      /* 家族底板跟单元走（含拖动） */
+    if(u.boxEl) u.boxEl.setAttribute("transform", `translate(${u.ax - u.bw/2 - 26},${u.ay - u.bh/2 - 26})`);
   }
   for(const l of sim.links){
     const s = l.s, t = l.t;
