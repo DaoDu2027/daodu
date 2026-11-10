@@ -165,10 +165,6 @@
   .node .spot{fill:#39414d; stroke:#fdfdfe; stroke-width:2; opacity:0; transition:opacity .2s;}
   .node.here .spot{opacity:1;}
   .node.here text.nodeLabel{font-weight:800;}
-  #charList .hereTag{
-    font-size:10px; color:#39414d; border:1.5px solid #39414d; border-radius:4px;
-    padding:0 4px; margin-left:6px; line-height:15px; font-weight:700; vertical-align:1px;
-  }
   /* ---------- 侧栏（Tab） ---------- */
   #side{
     flex:none; width:356px; display:flex; flex-direction:column;
@@ -425,7 +421,7 @@ window.BOOK_EXPORT_INFO = { readChapters: 361, totalChapters: 361 };
       </div>
       <div id="tabChars" class="tabPane">
         <div id="cardBody"><div class="placeholder">点击图谱中的人物，查看「此刻已知」的档案</div></div>
-        <div id="charListTitle">已登场人物</div>
+        <div id="charListTitle">本章人物</div>
         <div id="charList"></div>
       </div>
     </aside>
@@ -560,6 +556,17 @@ function callName(c, N){
   const rank = c.callRank;
   if(rank) for(const r of rank){ if(r[2] <= N) return r[0]; }
   return c.short;
+}
+
+/* 已知全名：截至第 N 章，在 c.name 与「已解锁」的称呼/别名里，取含间隔号「·」的最长者
+   （俄式全名＝名·父称·姓，间隔号是强信号；只取已解锁项 => 不剧透后文才出现的名字）。
+   若没有任何带「·」的已知称呼，回退 c.name（此时与标题相同，卡片不再重复显示）。 */
+function knownFullName(c, N){
+  let best = c.name || "";
+  const pick = nm => { if(nm && nm.indexOf("·") >= 0 && nm.length > best.length) best = nm; };
+  (c.callRank || []).forEach(r => { if(r[2] <= N) pick(r[0]); });
+  (c.aliases || []).forEach(a => { if(a.from <= N) pick(a.name); });
+  return best;
 }
 
 /* ---------- 本章出现的人物（右上角圆点角标） ----------
@@ -1323,14 +1330,14 @@ function renderCharCard(){
       ? `<span class="chip active" style="background:#eef1f6;color:#7a8292;border-color:#d8dde6">连线见 ${esc(callName(charById[mergeInfo[r._i]], N))}</span>` : "";
     return `<div class="relRow">${nt(other.id)}<span class="chip ${r.cat}">${esc(r.type)}</span>${merged}${chip}</div>`;
   }).join("") || '<div class="placeholder">暂无明确关系——不硬编</div>';
-  const cc = c.callCounts || {};
-  const topCall = (c.callRank || [])[0];
+  const fullName = knownFullName(c, N);
   el.innerHTML = `
     <button class="cardClose" onclick="selectChar(null)">×</button>
     <h3><i class="hdot" style="background:${nodeColor(c)}"></i>${esc(c.name)}${c.ghost ? '<span class="ghostTag">仅被提及·未登场</span>' : ''}</h3>
-    <div class="first">首次${c.ghost ? "被提及" : "登场"}：第${c.first}章${topCall ? ` · 全书最常被称为「${esc(topCall[0])}」（${topCall[1]} 次）` : ""}</div>
+    <div class="first">首次${c.ghost ? "被提及" : "登场"}：第${c.first}章</div>
+    ${fullName && fullName !== c.name ? `<div class="first">已知全名：${esc(fullName)}</div>` : ""}
     <div class="sec">此刻可用的称呼</div>
-    ${aliases.map(a => `<div class="aliasRow">「${esc(a.name)}」· ${esc(a.type || "别称")} · 第${a.from}章起${cc[a.name] ? ` · 原文出现 ${cc[a.name]} 次` : ""}</div>`).join("")}
+    ${aliases.map(a => `<div class="aliasRow">「${esc(a.name)}」· ${esc(a.type || "别称")} · 第${a.from}章起</div>`).join("")}
     <div class="sec">此刻已知的身份（随章节更新）</div>
     ${notes.map(n => `<div class="noteRow"><span class="cno">第${n.chapter}章</span>${hl(n.text)}</div>`).join("") || '<div class="placeholder">暂无</div>'}
     <div class="sec">与他人的关系（仅含已读章节）</div>
@@ -1339,14 +1346,14 @@ function renderCharCard(){
 function renderCharList(){
   const N = state.chapter;
   const cast = chapterCast(N);
-  const chars = activeChars(N).slice().sort((a,b) => a.first - b.first || b.count - a.count);
+  const chars = activeChars(N).filter(c => cast.has(c.id)).sort((a,b) => a.first - b.first || b.count - a.count);
+  document.getElementById("charListTitle").textContent = `本章人物（${chars.length}）`;
   document.getElementById("charList").innerHTML = chars.map(c => {
-    const mc = mentionCount(c.id, N);
     return `
-    <div class="row ${selectedChar === c.id ? "sel" : ""}" onclick="selectChar('${c.id}')">
+    <div class="row ${selectedChar === c.id ? "sel" : ""}" data-id="${c.id}" onclick="selectChar('${c.id}')">
       <span class="dot ${c.ghost ? "ghost" : ""}" style="background:${c.ghost ? "" : nodeColor(c)}"></span>
-      <span class="nm">${esc(callName(c, N))}${mc > 0 ? '<span class="hereTag">本章</span>' : ""}</span>
-      <span class="meta">${mc > 0 ? "本章提及 ×" + mc : (c.ghost ? "仅被提及" : "第" + c.first + "章登场")}</span>
+      <span class="nm">${esc(callName(c, N))}</span>
+      <span class="meta">${c.ghost ? "仅被提及" : "第" + c.first + "章登场"}</span>
     </div>`; }).join("");
 }
 
