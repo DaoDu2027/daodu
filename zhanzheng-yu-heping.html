@@ -51,7 +51,8 @@
     display:flex; align-items:center; justify-content:center; flex:none;
   }
   .navBtn:hover{border-color:var(--accent); color:var(--accent);}
-  #chapters{display:flex; gap:5px; flex-wrap:nowrap; overflow-x:auto; max-width:46vw; scrollbar-width:thin;}
+  #chapters{display:flex; gap:5px; flex-wrap:nowrap; overflow-x:auto; max-width:46vw; scrollbar-width:thin; cursor:grab; user-select:none; -webkit-user-select:none;}
+  #chapters.dragging{cursor:grabbing;}
   .chBtn{
     min-width:34px; height:30px; padding:0 11px; border-radius:8px; cursor:pointer;
     border:1px solid var(--line); background:var(--panel);
@@ -372,9 +373,9 @@ window.BOOK_EXPORT_INFO = { readChapters: 361, totalChapters: 361 };
     <div class="brand" id="brand">加载中…<span class="sub"></span></div>
     <div id="chapterBar">
       <span class="chLabel">章节</span>
-      <button class="navBtn" id="prevBtn" title="上一章">‹</button>
+      <button class="navBtn" id="prevBtn" title="向前滚动章节栏">‹</button>
       <div id="chapters"></div>
-      <button class="navBtn" id="nextBtn" title="下一章">›</button>
+      <button class="navBtn" id="nextBtn" title="向后滚动章节栏">›</button>
     </div>
     <span id="procTag">处理中…</span>
     <span class="tag">防剧透人物图谱</span>
@@ -1179,6 +1180,13 @@ function renderChapterBar(){
     b.onclick = () => trySetChapter(ch.n);
     bar.appendChild(b);
   });
+  /* 当前章滚到条带中间（重建会清 scrollLeft；用 rect 相对差值，不依赖 offsetParent） */
+  const act = bar.querySelector(".chBtn.active");
+  if(act){
+    const srect = bar.getBoundingClientRect();
+    const rrect = act.getBoundingClientRect();
+    bar.scrollLeft += (rrect.left + rrect.width / 2) - (srect.left + bar.clientWidth / 2);
+  }
 }
 
 function applyChapter(t){
@@ -1209,8 +1217,42 @@ document.getElementById("modalOk").onclick = () => {
 document.getElementById("modalCancel").onclick = () => {
   document.getElementById("modal").classList.remove("show"); pendingTarget = null;
 };
-document.getElementById("prevBtn").onclick = () => trySetChapter(state.chapter - 1);
-document.getElementById("nextBtn").onclick = () => trySetChapter(state.chapter + 1);
+/* ---------- 章节栏交互：顶栏 ‹ › 滚动条带（切章走底栏）、滚轮横滚、鼠标按住拖动 ---------- */
+(function(){
+  const strip = document.getElementById("chapters");
+  const page = () => Math.max(140, strip.clientWidth - 60);
+  document.getElementById("prevBtn").onclick = () => strip.scrollBy({left: -page(), behavior: "smooth"});
+  document.getElementById("nextBtn").onclick = () => strip.scrollBy({left:  page(), behavior: "smooth"});
+
+  /* 滚轮：竖向滚轮转为横向滚动（触控板横向滑动走原生） */
+  strip.addEventListener("wheel", e => {
+    if(Math.abs(e.deltaY) >= Math.abs(e.deltaX)){
+      e.preventDefault();
+      strip.scrollLeft += e.deltaY;
+    }
+  }, {passive: false});
+
+  /* 鼠标按住拖动条带（触屏用原生滑动，不劫持） */
+  let dragging = false, moved = false, sx = 0, sl = 0;
+  strip.addEventListener("pointerdown", e => {
+    if(e.pointerType !== "mouse" || e.button !== 0) return;
+    dragging = true; moved = false; sx = e.clientX; sl = strip.scrollLeft;
+    strip.classList.add("dragging");
+  });
+  window.addEventListener("pointermove", e => {
+    if(!dragging) return;
+    const dx = e.clientX - sx;
+    if(Math.abs(dx) > 5) moved = true;
+    if(moved) strip.scrollLeft = sl - dx;
+  });
+  window.addEventListener("pointerup", () => {
+    if(dragging){ dragging = false; strip.classList.remove("dragging"); }
+  });
+  /* 拖动过的松手：吞掉这次 click，避免误触章节按钮 */
+  strip.addEventListener("click", e => {
+    if(moved){ e.stopPropagation(); e.preventDefault(); moved = false; }
+  }, true);
+})();
 document.getElementById("prevBtn2").onclick = () => trySetChapter(state.chapter - 1);
 document.getElementById("nextBtn2").onclick = () => trySetChapter(state.chapter + 1);
 document.getElementById("infoBtn").onclick = () => document.getElementById("aboutModal").classList.add("show");
